@@ -1,0 +1,3 @@
+# simple example
+A config to change 2 themes. A luigi one, and a mario one. Each with its own boot option in hekate. Heres how it works:
+The hekate_ipl.ini file specifies which script to use, then renames it to "/startup.te", then launches TegraExplorer to execute that script. That script detects if the folder needs renaming and if it does, renames it, then launches fusee to boot the switch. Read the scripts for more comments on the implementation. 
