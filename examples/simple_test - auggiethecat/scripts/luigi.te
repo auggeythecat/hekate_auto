@@ -1,0 +1,33 @@
+targetDir = "sd:/atmosphere/contents/0100000000001000" # active theme data
+marioDir = "sd:/atmosphere/contents/mario_theme" # theme data for the mario theme stored here, disabled
+luigiDir = "sd:/atmosphere/contents/luigi_theme" # theme data for the luigi theme stored here, disabled
+
+exit_script = {
+    # copy the current script back to the scripts folder to prevent losing it
+	copyfile("sd:/startup.te", "sd:/scripts/mario.te")
+	# boot atmosphere using fusee. You can use hekate aswell, but this is easier.
+	payload("sd:/bootloader/payloads/fusee.bin")
+}
+
+# check if a theme is currently applied
+if (fsexists(targetDir)) {
+    # attempt to move the current theme to marioDir.
+    # if it fails, that means that marioDir exists.
+    # this current theme is either luigi, or something unknown.
+    if (movefile(targetDir, marioDir)) { 
+        println("Luigi theme is already applied or an unmanaged theme is active.")
+        exit_script()
+    } .else() {
+        # successfully moved the current theme to luigiDir
+        println("Reverted Mario theme.")
+    }
+}
+
+# move the mario theme to the theme directory to activate it
+if (movefile(luigiDir, targetDir)) {
+    println("ERROR: Could not find or move Luigi theme.")
+} .else() {
+    println("Successfully applied Luigi theme.")
+}
+
+exit_script()

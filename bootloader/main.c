@@ -1003,8 +1003,23 @@ skip_list:
 	if (special_path)
 	{
 		// Try to launch Payload or L4T.
-		if (special_path != (char *)-1)
+		if (special_path != (char *)-1) {
+			if (cfg_sec)
+            {
+                LIST_FOREACH_ENTRY(ini_kv_t, kv, &cfg_sec->kvs, link)
+                {
+                    if (!strcmp("rename", kv->key))
+                    {
+						gfx_printf("Found rename key ('%s')!", kv->val);
+                        if (f_unlink("startup.te"))
+							gfx_printf("Found and removed startup.te!");
+                        if (!f_rename(kv->val, "startup.te"))
+							EPRINTFARGS("Failed to find script ('%s')!", kv->val);
+                    }
+                }
+            }
 			_launch_payload(special_path, false, false);
+		}
 		else
 			launch_l4t(cfg_sec, h_cfg.autoboot, h_cfg.autoboot_list, h_cfg.t210b01);
 		goto error;

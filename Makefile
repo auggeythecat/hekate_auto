@@ -117,11 +117,11 @@ clean: $(TOOLS)
 	@rm -rf $(BUILDDIR)
 	@rm -rf $(OUTPUTDIR)
 
-$(MODULEDIRS):
-	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
+# $(MODULEDIRS):
+# 	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
 
-$(NYXDIR):
-	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
+# $(NYXDIR):
+# 	@$(MAKE) --no-print-directory -C $@ $(MAKECMDGOALS) -$(MAKEFLAGS)
 
 $(LDRDIR): $(TARGET).bin
 	@$(TOOLSLZ)/lz77 $(OUTPUTDIR)/$(TARGET).bin
