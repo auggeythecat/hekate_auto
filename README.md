@@ -1,8 +1,8 @@
 # This is a fork of hekate that provides a single change:
 
-| Config option          | Description                                                |
-| ---------------------- | ---------------------------------------------------------- |
-| Rename                 | Renames the given file path to "/startup.te" for payload   |
+| Config option          | Description                                                        |
+| ---------------------- | ------------------------------------------------------------------ |
+| Rename                 | Renames the given file path to "/startup.te" for payload lauches   |
 
 ## Why is this notable?
 [TegraExplorer](https://github.com/suchmememanyskill/TegraExplorer/) allows you to execute [TegraScripts](https://github.com/suchmememanyskill/Tegrascript). On boot it will execute "/startup.te". What this key allows you to do is run any script from a hekate launch config. With this, you can take full control over the sd configuration before boot, ***automatically***. You can run completely different setups for sysmmc or emummc, or between multiple emummcs. See the [examples](https://github.com/auggeythecat/hekate_-Test-/tree/master/examples/) folder.
@@ -12,7 +12,7 @@ Tegrascripts can be hard to make for most poeple. If you make a config even just
 
 
 ## About
-I did nothing here. This repo is built on the shoulders of geniousous like [CTCaer](https://github.com/CTCaer), [suchmememanyskill](https://github.com/suchmememanyskill/), [SciresM](https://github.com/SciresM), and everyone else who has contributed to hekate, TegraExporer/TegraScripts, Atmosphere, and all other homebrew tools that make this scene amazing. 
+I did nothing here. This repo is built on the shoulders of geniuses like [CTCaer](https://github.com/CTCaer), [suchmememanyskill](https://github.com/suchmememanyskill/), [SciresM](https://github.com/SciresM), and everyone else who has contributed to hekate, TegraExporer/TegraScripts, Atmosphere, and all other homebrew tools that make this scene amazing. 
 
 ```
 hekate  (c) 2018,      naehrwert, st4rk.
