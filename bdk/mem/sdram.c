@@ -85,9 +85,9 @@ static const u8 dram_encoding_t210b01[] = {
 #include "sdram_config.inl"
 #include "sdram_config_t210b01.inl"
 
-static bool _sdram_wait_emc_status(u32 reg_offset, u32 bit_mask, bool updated_state, s32 emc_channel)
+static int _sdram_wait_emc_status(u32 reg_offset, u32 bit_mask, bool updated_state, s32 emc_channel)
 {
-	bool err = true;
+	int err = 1;
 
 	for (s32 i = 0; i < EMC_STATUS_UPDATE_TIMEOUT; i++)
 	{
@@ -98,13 +98,13 @@ static bool _sdram_wait_emc_status(u32 reg_offset, u32 bit_mask, bool updated_st
 
 			if (((EMC_CH1(reg_offset) & bit_mask) != 0) == updated_state)
 			{
-				err = false;
+				err = 0;
 				break;
 			}
 		}
 		else if (((EMC(reg_offset) & bit_mask) != 0) == updated_state)
 		{
-			err = false;
+			err = 0;
 			break;
 		}
 		usleep(1);
@@ -180,41 +180,6 @@ emc_mr_data_t sdram_read_mrx(emc_mr_t mrx)
 	}
 
 	return data;
-}
-
-void sdram_src_pllc(bool enable)
-{
-	static bool enabled = false;
-
-	if (hw_get_chip_id() == GP_HIDREV_MAJOR_T210 || enable == enabled)
-		return;
-
-	enabled = enable;
-
-	// Clear CC interrupt.
-	EMC(EMC_INTSTATUS) = BIT(4);
-	(void)EMC(EMC_INTSTATUS);
-
-	u32 clk_src_emc = _dram_cfg_08_10_12_14_samsung_hynix_4gb.emc_clock_source;
-
-	if (enable)
-	{
-		// Check if clock source is not the expected one.
-		if (CLOCK(CLK_RST_CONTROLLER_CLK_SOURCE_EMC) != clk_src_emc)
-			return;
-
-		// Set source as PLLC_OUT0.
-		CLOCK(CLK_RST_CONTROLLER_CLK_SOURCE_EMC) = 0x20188002;
-	}
-	else
-	{
-		// Restore MC/EMC clock.
-		CLOCK(CLK_RST_CONTROLLER_CLK_SOURCE_EMC) = clk_src_emc;
-	}
-
-	// Wait for CC interrupt.
-	while (!(EMC(EMC_INTSTATUS) & BIT(4)))
-		usleep(1);
 }
 
 static void _sdram_config_t210(const sdram_params_t210_t *params)

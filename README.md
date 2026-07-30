@@ -8,7 +8,7 @@
 [TegraExplorer](https://github.com/suchmememanyskill/TegraExplorer/) allows you to execute [TegraScripts](https://github.com/suchmememanyskill/Tegrascript). On boot it will execute "/startup.te". What this key allows you to do is run any script from a hekate launch config. With this, you can take full control over the sd configuration before boot, ***automatically***. You can run completely different setups for sysmmc or emummc, or between multiple emummcs. See the [examples](https://github.com/auggeythecat/hekate_auto/tree/master/examples) folder.
 
 ## If you use this
-Tegrascripts can be hard to make for most poeple. If you make a config even just for personal use, please make a pull request or upload the scripts in an issue for them to be added to the [examples](https://github.com/auggeythecat/hekate_auto/tree/master/examples) folder. These examples will make it much easier for people to make functional configs.
+Tegrascripts can be hard to make for most people. If you make a config even just for personal use, please make a pull request or upload the scripts in an issue for them to be added to the [examples](https://github.com/auggeythecat/hekate_auto/tree/master/examples) folder. These examples will make it much easier for people to make functional configs.
 
 
 ## About
@@ -16,9 +16,9 @@ I did nothing here. This repo is built on the shoulders of geniuses like [CTCaer
 
 ```
 hekate  (c) 2018,      naehrwert, st4rk.
-        (c) 2018-2025, CTCaer.
+        (c) 2018-2026, CTCaer.
 
-Nyx GUI (c) 2019-2025, CTCaer.
+Nyx GUI (c) 2019-2026, CTCaer.
 
 Thanks to: derrek, nedwill, plutoo, shuffle2, smea, thexyz, yellows8.
 Greetings to: fincs, hexkyz, SciresM, Shiny Quagsire, WinterMute.

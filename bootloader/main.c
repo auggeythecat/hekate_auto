@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018 naehrwert
  *
- * Copyright (c) 2018-2025 CTCaer
+ * Copyright (c) 2018-2026 CTCaer
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -97,29 +97,17 @@ static void _check_power_off_from_hos()
 #define PATCHED_RELOC_ENTRY 0x40010000
 #define EXT_PAYLOAD_ADDR    0xC0000000
 #define RCM_PAYLOAD_ADDR    (EXT_PAYLOAD_ADDR + ALIGN(PATCHED_RELOC_SZ, 0x10))
-#define COREBOOT_END_ADDR   0xD0000000
-#define COREBOOT_VER_OFF    0x41
-#define CBFS_DRAM_EN_ADDR   0x4003E000
-#define  CBFS_DRAM_MAGIC    0x4452414D // "DRAM"
 
-static void *coreboot_addr;
-
-static void _reloc_patcher(u32 payload_dst, u32 payload_src, u32 payload_size)
+static void _reloc_append(u32 payload_dst, u32 payload_src, u32 payload_size)
 {
 	memcpy((u8 *)payload_src, (u8 *)IPL_LOAD_ADDR, PATCHED_RELOC_SZ);
 
-	reloc_meta_t *relocator = (reloc_meta_t *)(payload_src + RELOC_META_OFF);
+	volatile reloc_meta_t *relocator = (reloc_meta_t *)(payload_src + RELOC_META_OFF);
 
 	relocator->start = payload_dst - ALIGN(PATCHED_RELOC_SZ, 0x10);
 	relocator->stack = PATCHED_RELOC_STACK;
 	relocator->end   = payload_dst + payload_size;
 	relocator->ep    = payload_dst;
-
-	if (payload_size == 0x7000)
-	{
-		memcpy((u8 *)(payload_src + ALIGN(PATCHED_RELOC_SZ, 0x10)), coreboot_addr, 0x7000); // Bootblock.
-		*(vu32 *)CBFS_DRAM_EN_ADDR = CBFS_DRAM_MAGIC;
-	}
 }
 
 bool is_ipl_updated(void *buf, u32 size, const char *path, bool force)
@@ -183,66 +171,42 @@ static void _launch_payload(char *path, bool update, bool clear_screen)
 	if (update && is_ipl_updated(buf, size, path, false))
 		goto out;
 
-
-	// Set payload address.
-	void *payload;
-	if (size < 0x30000)
-		payload = (void *)RCM_PAYLOAD_ADDR;
-	else
+	// Check if it safely fits IRAM.
+	if (size > 0x30000)
 	{
-		coreboot_addr = (void *)(COREBOOT_END_ADDR - size);
-		payload = coreboot_addr;
-		if (h_cfg.t210b01)
-		{
-			gfx_con.mute = false;
-			EPRINTF("Coreboot not allowed on Mariko!");
+		gfx_con.mute = false;
+		EPRINTF("Payload is too big!");
 
-			goto out;
-		}
+		goto out;
 	}
 
 	sd_end();
 
 	// Copy the payload to our chosen address.
-	memcpy(payload, buf, size);
+	memcpy((void *)RCM_PAYLOAD_ADDR, buf, size);
 
-	if (size < 0x30000)
-	{
-		if (update)
-			memcpy((u8 *)(RCM_PAYLOAD_ADDR + PATCHED_RELOC_SZ), &b_cfg, sizeof(boot_cfg_t)); // Transfer boot cfg.
-		else
-			_reloc_patcher(PATCHED_RELOC_ENTRY, EXT_PAYLOAD_ADDR, ALIGN(size, 0x10));
-
-		hw_deinit(false, byte_swap_32(*(u32 *)(payload + size - sizeof(u32))));
-	}
-	else
-	{
-		_reloc_patcher(PATCHED_RELOC_ENTRY, EXT_PAYLOAD_ADDR, 0x7000);
-
-		// Get coreboot seamless display magic.
-		u32 magic = 0;
-		char *magic_ptr = payload + COREBOOT_VER_OFF;
-		memcpy(&magic, magic_ptr + strlen(magic_ptr) - 4, 4);
-		hw_deinit(true, magic);
-	}
-
-	void (*update_ptr)()      = (void *)RCM_PAYLOAD_ADDR;
-	void (*ext_payload_ptr)() = (void *)EXT_PAYLOAD_ADDR;
-
-	// Launch our payload.
+	// Append relocator or set config.
+	void (*payload_ptr)();
 	if (!update)
 	{
-		// Some cards (Sandisk U1), do not like a fast power cycle. Wait min 100ms.
-		sdmmc_storage_init_wait_sd();
+		_reloc_append(PATCHED_RELOC_ENTRY, EXT_PAYLOAD_ADDR, ALIGN(size, 0x10));
 
-		(*ext_payload_ptr)();
+		payload_ptr = (void *)EXT_PAYLOAD_ADDR;
 	}
 	else
 	{
+		memcpy((u8 *)(RCM_PAYLOAD_ADDR + PATCHED_RELOC_SZ), &b_cfg, sizeof(boot_cfg_t)); // Transfer boot cfg.
+
 		// Set updated flag to skip check on launch.
 		EMC(EMC_SCRATCH0) |= EMC_HEKA_UPD;
-		(*update_ptr)();
+
+		payload_ptr = (void *)RCM_PAYLOAD_ADDR;
 	}
+
+	hw_deinit(false);
+
+	// Launch our payload.
+	(*payload_ptr)();
 
 out:
 	free(buf);
@@ -264,7 +228,7 @@ static void _launch_payloads()
 	gfx_clear_grey(0x1B);
 	gfx_con_setpos(0, 0);
 
-	if (!sd_mount())
+	if (sd_mount())
 		goto failed_sd_mount;
 
 	ments = (ment_t *)malloc(sizeof(ment_t) * (max_entries + 3));
@@ -346,11 +310,11 @@ static void _launch_ini_list()
 	gfx_clear_grey(0x1B);
 	gfx_con_setpos(0, 0);
 
-	if (!sd_mount())
+	if (sd_mount())
 		goto parse_failed;
 
 	// Check that ini files exist and parse them.
-	if (!ini_parse(&ini_list_sections, "bootloader/ini", true))
+	if (ini_parse(&ini_list_sections, "bootloader/ini", true))
 	{
 		EPRINTF("No .ini files in bootloader/ini!");
 		goto parse_failed;
@@ -476,7 +440,7 @@ static void _launch_config()
 	gfx_clear_grey(0x1B);
 	gfx_con_setpos(0, 0);
 
-	if (!sd_mount())
+	if (sd_mount())
 		goto parse_failed;
 
 	// Load emuMMC configuration.
@@ -788,7 +752,7 @@ static void _auto_launch()
 	emummc_load_cfg();
 
 	// Parse hekate main configuration.
-	if (!ini_parse(&ini_sections, "bootloader/hekate_ipl.ini", false))
+	if (ini_parse(&ini_sections, "bootloader/hekate_ipl.ini", false))
 		goto out; // Can't load hekate_ipl.ini.
 
 	// Load configuration.
@@ -875,7 +839,7 @@ static void _auto_launch()
 		boot_entry_id = 1;
 		bootlogoCustomEntry = NULL;
 
-		if (!ini_parse(&ini_list_sections, "bootloader/ini", true))
+		if (ini_parse(&ini_list_sections, "bootloader/ini", true))
 			goto skip_list;
 
 		LIST_FOREACH_ENTRY(ini_sec_t, ini_sec_list, &ini_list_sections, link)
@@ -1066,15 +1030,15 @@ out:
 	_nyx_load_run();
 }
 
-#define EXCP_EN_ADDR   0x4003FFFC
+#define EXCP_EN_ADDR   0x4003FF1C
 #define  EXCP_MAGIC       0x30505645 // "EVP0".
-#define EXCP_TYPE_ADDR 0x4003FFF8
+#define EXCP_TYPE_ADDR 0x4003FF18
 #define  EXCP_TYPE_RESET  0x545352   // "RST".
 #define  EXCP_TYPE_UNDEF  0x464455   // "UDF".
 #define  EXCP_TYPE_PABRT  0x54424150 // "PABT".
 #define  EXCP_TYPE_DABRT  0x54424144 // "DABT".
 #define  EXCP_TYPE_WDT    0x544457   // "WDT".
-#define EXCP_LR_ADDR   0x4003FFF4
+#define EXCP_LR_ADDR   0x4003FF14
 
 #define PSTORE_LOG_OFFSET 0x180000
 #define PSTORE_RAM_SIG    0x43474244 // "DBGC".
@@ -1369,7 +1333,7 @@ static void _r2c_get_config_t210b01()
 
 static void _ipl_reload()
 {
-	hw_deinit(false, 0);
+	hw_deinit(false);
 
 	// Reload hekate.
 	void (*ipl_ptr)() = (void *)IPL_LOAD_ADDR;
@@ -1380,7 +1344,7 @@ static void _about()
 {
 	static const char credits[] =
 		"\nhekate   (c) 2018,      naehrwert, st4rk\n\n"
-		"         (c) 2018-2025, CTCaer\n\n"
+		"         (c) 2018-2026, CTCaer\n\n"
 		" ___________________________________________\n\n"
 		"Thanks to: %kderrek, nedwill, plutoo,\n"
 		"           shuffle2, smea, thexyz, yellows8%k\n"
@@ -1477,7 +1441,7 @@ ment_t ment_top[] = {
 	MDEF_END()
 };
 
-menu_t menu_top = { ment_top, "hekate v6.4.2", 0, 0 };
+menu_t menu_top = { ment_top, "hekate v6.5.3", 0, 0 };
 
 extern void pivot_stack(u32 stack_top);
 
@@ -1497,7 +1461,7 @@ void ipl_main()
 	heap_init((void *)IPL_HEAP_START);
 
 #ifdef DEBUG_UART_PORT
-	uart_send(DEBUG_UART_PORT, (u8 *)"hekate: Hello!\r\n", 16);
+	uart_send(DEBUG_UART_PORT, (u8 *)"hekate: Hello!\n", 15);
 	uart_wait_xfer(DEBUG_UART_PORT, UART_TX_IDLE);
 #endif
 
@@ -1517,7 +1481,8 @@ void ipl_main()
 	bpmp_clk_rate_set(h_cfg.t210b01 ? ipl_ver.rcfg.bclk_t210b01 : ipl_ver.rcfg.bclk_t210);
 
 	// Mount SD Card.
-	h_cfg.errors |= !sd_mount() ? ERR_SD_BOOT_EN : 0;
+	if (sd_mount())
+		h_cfg.errors |= ERR_SD_BOOT_EN;
 
 	// Check if watchdog was fired previously.
 	if (watchdog_fired())
@@ -1528,11 +1493,11 @@ void ipl_main()
 
 	// Save sdram lp0 config.
 	void *sdram_params = h_cfg.t210b01 ? sdram_get_params_t210b01() : sdram_get_params_patched();
-	if (!ianos_loader("bootloader/sys/libsys_lp0.bso", DRAM_LIB, sdram_params))
+	if (!ianos_static_module("bootloader/sys/libsys_lp0.bso", sdram_params))
 		h_cfg.errors |= ERR_LIBSYS_LP0;
 
 	// Train DRAM and switch to max frequency.
-	if (minerva_init((minerva_str_t *)&nyx_str->minerva)) //!TODO: Add Tegra210B01 support to minerva.
+	if (minerva_init((minerva_str_t *)&nyx_str->minerva))
 		h_cfg.errors |= ERR_LIBSYS_MTC;
 
 	// Disable watchdog protection.

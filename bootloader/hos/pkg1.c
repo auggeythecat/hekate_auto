@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018 naehrwert
  * Copyright (c) 2018 st4rk
- * Copyright (c) 2018-2025 CTCaer
+ * Copyright (c) 2018-2026 CTCaer
  * Copyright (c) 2018 balika011
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -171,7 +171,8 @@ static const pkg1_id_t _pkg1_ids[] = {
 	{ "20240207", 17, 19, 0x0E00, 0x6FE0, 0x40030000, 0x4003E000, NULL }, // 18.0.0 - 18.1.0.
 	{ "20240808", 18, 20, 0x0E00, 0x6FE0, 0x40030000, 0x4003E000, NULL }, // 19.0.0 - 19.0.1.
 	{ "20250206", 19, 21, 0x0E00, 0x6FE0, 0x40030000, 0x4003E000, NULL }, // 20.0.0 - 20.5.0.
-	{ "20251009", 20, 22, 0x0E00, 0x6FE0, 0x40030000, 0x4003E000, NULL }, // 21.0.0+
+	{ "20251009", 20, 22, 0x0E00, 0x6FE0, 0x40030000, 0x4003E000, NULL }, // 21.0.0 - 21.2.0.
+	{ "20260123", 21, 23, 0x0E00, 0x6FE0, 0x40030000, 0x4003E000, NULL }, // 22.0.0+
 };
 
 const pkg1_id_t *pkg1_get_latest()
@@ -195,7 +196,7 @@ const pkg1_id_t *pkg1_identify(u8 *pkg1)
 	return NULL;
 }
 
-int pkg1_decrypt(const pkg1_id_t *id, u8 *pkg1)
+bool pkg1_decrypt(const pkg1_id_t *id, u8 *pkg1)
 {
 	pk11_hdr_t *hdr;
 
@@ -205,7 +206,7 @@ int pkg1_decrypt(const pkg1_id_t *id, u8 *pkg1)
 		u8 *pkg11 = pkg1 + id->pkg11_off;
 		u32 pkg11_size = *(u32 *)pkg11;
 		hdr = (pk11_hdr_t *)(pkg11 + 0x20);
-		se_aes_crypt_ctr(11, hdr, pkg11_size, hdr, pkg11_size, pkg11 + 0x10);
+		se_aes_crypt_ctr(11, hdr, hdr, pkg11_size, pkg11 + 0x10);
 	}
 	else
 	{
@@ -216,7 +217,7 @@ int pkg1_decrypt(const pkg1_id_t *id, u8 *pkg1)
 		// Use BEK for T210B01.
 		// Additionally, skip 0x20 bytes from decryption to maintain the header.
 		se_aes_iv_clear(13);
-		se_aes_crypt_cbc(13, DECRYPT, pkg1 + 0x20, oem_hdr->size - 0x20, pkg1 + 0x20, oem_hdr->size - 0x20);
+		se_aes_crypt_cbc(13, DECRYPT, pkg1 + 0x20, pkg1 + 0x20, oem_hdr->size - 0x20);
 	}
 
 	// Return if header is valid.
@@ -341,64 +342,46 @@ void pkg1_warmboot_patch(void *hos_ctxt)
 		*(vu32 *)(ctxt->pkg1_id->warmboot_base + warmboot_patchset[i].off) = warmboot_patchset[i].val;
 }
 
-static void _warmboot_filename(char *out, u32 fuses)
-{
-	if (fuses < 16)
-	{
-		out[19] = '0';
-		itoa(fuses, &out[19 + 1], 16);
-	}
-	else
-		itoa(fuses, &out[19], 16);
-	strcat(out, ".bin");
-}
-
 int pkg1_warmboot_config(void *hos_ctxt, u32 warmboot_base, u32 fuses_fw, u8 mkey)
 {
 	launch_ctxt_t *ctxt = (launch_ctxt_t *)hos_ctxt;
-	int res = 1;
+	int res = 0;
 
 	if (h_cfg.t210b01)
 	{
-		u32 pa_id;
-		u32 fuses_max = 32; // Current ODM7 max.
 		u8  burnt_fuses = bit_count(fuse_read_odm(7));
 
-		// Save current warmboot in storage cache (MWS) and check if another one is needed.
+		// Check if not overridden.
 		if (!ctxt->warmboot)
 		{
-			char path[128];
-			strcpy(path, "warmboot_mariko/wb_");
-			_warmboot_filename(path, fuses_fw);
+			char path[32];
+			strcpy(path, "warmboot_mariko/wb_00.bin");
+			itoa(fuses_fw, &path[19 + (fuses_fw < 0x10 ? 1 : 0)], 16);
+			path[21] = '.';
 
-			// Check if warmboot fw exists and save it.
-			if (ctxt->warmboot_size && f_stat(path, NULL))
+			//!OBSOLETE: Check if warmboot fw does not exist and save it.
+			if (ctxt->warmboot_size && warmboot_base && f_stat(path, NULL))
 			{
 				f_mkdir("warmboot_mariko");
 				sd_save_to_file((void *)warmboot_base, ctxt->warmboot_size, path);
 			}
 
-			// Load warmboot fw from storage (MWS) if not matched.
+			// Load sc7exit-fw from storage if low.
 			if (burnt_fuses > fuses_fw)
 			{
-				u32 tmp_fuses = burnt_fuses;
-				while (true)
-				{
-					_warmboot_filename(path, burnt_fuses);
-					if (!f_stat(path, NULL))
-					{
-						ctxt->warmboot = sd_file_read(path, &ctxt->warmboot_size);
-						burnt_fuses = tmp_fuses;
-						break;
-					}
-					if (tmp_fuses >= fuses_max)
-						break;
-					tmp_fuses++;
-				}
+				//!TODO: Update on fuse burns.
+				void *warmboot_fw = sd_file_read("bootloader/sys/l4t/sc7exit_b01.bin", &ctxt->warmboot_size);
+				fuses_fw = *(u32 *)warmboot_fw;
 
-				// Check if proper warmboot firmware was not found.
-				if (!ctxt->warmboot)
-					res = 0;
+				// Check if high enough.
+				if (!warmboot_fw || burnt_fuses > fuses_fw)
+					res = 1;
+				else
+				{
+					ctxt->warmboot = warmboot_fw + sizeof(u32);
+					ctxt->warmboot_size -= sizeof(u32) * 2;
+					burnt_fuses = fuses_fw;
+				}
 			}
 			else // Replace burnt fuses with higher count.
 				burnt_fuses = fuses_fw;
@@ -406,7 +389,7 @@ int pkg1_warmboot_config(void *hos_ctxt, u32 warmboot_base, u32 fuses_fw, u8 mke
 
 		// Configure warmboot parameters. Anything lower than 6.0.0 is not supported.
 		// From 7.0.0 and up, it's not derived from PA segment but it's 0x21 * fuses.
-		pa_id = 0x21 * burnt_fuses;
+		u32 pa_id = 0x21 * burnt_fuses;
 		if (burnt_fuses <= 8) // Old method.
 			pa_id -= 0x60;
 
