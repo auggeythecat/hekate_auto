@@ -297,6 +297,25 @@ failed_sd_mount:
 	btn_wait();
 }
 
+static void _rename_script(ini_sec_t *cfg_sec) {
+	LIST_FOREACH_ENTRY(ini_kv_t, kv, &cfg_sec->kvs, link)
+	{
+		if (!strcmp("rename", kv->key))
+		{
+			FILINFO fno;
+			if (f_stat(kv->val, &fno) != FR_OK)
+				EPRINTFARGS("Failed to find script ('%s')!", kv->val);
+
+			gfx_printf("Found rename key ('%s')!", kv->val);
+
+			if (f_unlink("startup.te"))
+				gfx_printf("Found and removed startup.te!");
+			if (f_rename(kv->val, "startup.te") != FR_OK)
+				EPRINTFARGS("Found, but failed to move script ('%s')!", kv->val);
+		}
+	}
+}
+
 static void _launch_ini_list()
 {
 	u8 max_entries = 61;
@@ -393,7 +412,10 @@ parse_failed:
 	{
 		// Try to launch Payload or L4T.
 		if (special_path != (char *)-1)
+		{
+			_rename_script(cfg_sec);
 			_launch_payload(special_path, false, true);
+		}
 		else
 		{
 			u32 entry_idx = 0;
@@ -538,7 +560,10 @@ parse_failed:
 	{
 		// Try to launch Payload or L4T.
 		if (special_path != (char *)-1)
+		{
+			_rename_script(cfg_sec);
 			_launch_payload(special_path, false, true);
+		}
 		else
 		{
 			u32 entry_idx = 0;
@@ -967,22 +992,10 @@ skip_list:
 	if (special_path)
 	{
 		// Try to launch Payload or L4T.
-		if (special_path != (char *)-1) {
-			if (cfg_sec)
-            {
-                LIST_FOREACH_ENTRY(ini_kv_t, kv, &cfg_sec->kvs, link)
-                {
-                    if (!strcmp("rename", kv->key))
-                    {
-						gfx_printf("Found rename key ('%s')!", kv->val);
-                        if (f_unlink("startup.te"))
-							gfx_printf("Found and removed startup.te!");
-                        if (!f_rename(kv->val, "startup.te"))
-							EPRINTFARGS("Failed to find script ('%s')!", kv->val);
-                    }
-                }
-            }
-			_launch_payload(special_path, false, false);
+		if (special_path != (char *)-1)
+		{
+			_rename_script(cfg_sec);
+			_launch_payload(special_path, false, true);
 		}
 		else
 			launch_l4t(cfg_sec, h_cfg.autoboot, h_cfg.autoboot_list, h_cfg.t210b01);
